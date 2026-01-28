@@ -1,6 +1,6 @@
 """
 BOM Processor - Streamlit Web Application
-Author: GitHub Copilot
+Author: Zongyue Liu
 Date: 2026-01-27
 
 Streamlit web interface for BOM hierarchical processing

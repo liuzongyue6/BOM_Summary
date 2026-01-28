@@ -267,6 +267,6 @@ MIT License
 
 ---
 
-**作者**: GitHub Copilot  
+**作者**: Zongyue Liu  
 **创建日期**: 2026-01-27  
 **版本**: 1.0
