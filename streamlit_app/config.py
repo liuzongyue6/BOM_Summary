@@ -24,6 +24,15 @@ REQUIRED_COLUMNS = [
     'Quantity'
 ]
 
+# Comparison columns
+COMPARISON_COLUMNS = [
+    'CAD OEM Part Number',
+    'CAD OEM Rev',
+    'Material Spec',
+    'CAD Oem Name',
+    'Thickness'
+]
+
 # Application settings
 APP_TITLE = "BOM Hierarchical Processor"
 APP_ICON = "📊"

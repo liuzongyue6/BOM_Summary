@@ -1,6 +1,6 @@
 """
 BOM Processor - Extract and compress hierarchical BOM data from Excel files
-Author: GitHub Copilot
+Author: Zongyue Liu
 Date: 2026-01-24
 
 This script processes hierarchical BOM (Bill of Materials) Excel files by:
@@ -121,7 +121,7 @@ class BOMProcessor:
         self.log(f"Found {len(headers)} column headers")
         
         # Required columns
-        required_cols = ['BOM Line', 'CAD OEM Part Number', 'CAD OEM Rev', 'Quantity']
+        required_cols = ['BOM Line', 'CAD OEM Part Number', 'CAD OEM Rev']
         missing_cols = [col for col in required_cols if col not in headers]
         if missing_cols:
             self.log(f"WARNING: Missing required columns: {missing_cols}", "WARNING")
@@ -267,7 +267,7 @@ class BOMProcessor:
         return output_wb
     
     def create_compressed_sheets(self, output_wb: Any, branches: Dict[str, List[Dict]]):
-        """Create compressed sheets with deduplication and quantity aggregation"""
+        """Create compressed sheets with deduplication """
         self.log("Creating compressed sheets...")
         
         compress_columns = [
@@ -275,8 +275,7 @@ class BOMProcessor:
             'CAD OEM Rev',
             'Material Spec',
             'CAD Oem Name',
-            'Thickness',
-            'Quantity'
+            'Thickness'
         ]
         
         for sheet_name, rows in branches.items():
@@ -293,8 +292,7 @@ class BOMProcessor:
             grouped_data = defaultdict(lambda: {
                 'Material Spec': None,
                 'CAD Oem Name': None,
-                'Thickness': None,
-                'Quantity': 0
+                'Thickness': None
             })
             
             original_count = 0
@@ -310,25 +308,13 @@ class BOMProcessor:
                 
                 key = (part_num, rev)
                 
-                # Get quantity and normalize (empty/0 -> 1)
-                qty = row_data.get('Quantity')
-                if qty is None or qty == '' or qty == 0 or qty == '0' or qty == 0.0:
-                    qty = 1
-                else:
-                    try:
-                        qty = float(qty)
-                    except (ValueError, TypeError):
-                        self.log(f"WARNING: Invalid quantity '{qty}' in {sheet_name}, treating as 1", "WARNING")
-                        qty = 1
-                
                 # First occurrence: store all fields
                 if grouped_data[key]['Material Spec'] is None:
                     grouped_data[key]['Material Spec'] = row_data.get('Material Spec')
                     grouped_data[key]['CAD Oem Name'] = row_data.get('CAD Oem Name')
                     grouped_data[key]['Thickness'] = row_data.get('Thickness')
                 
-                # Accumulate quantity
-                grouped_data[key]['Quantity'] += qty
+
             
             # Write deduplicated data
             row_idx = 2
@@ -338,7 +324,6 @@ class BOMProcessor:
                 ws.cell(row_idx, 3, data['Material Spec'])
                 ws.cell(row_idx, 4, data['CAD Oem Name'])
                 ws.cell(row_idx, 5, data['Thickness'])
-                ws.cell(row_idx, 6, data['Quantity'])
                 row_idx += 1
             
             deduplicated_count = len(grouped_data)
@@ -376,12 +361,10 @@ class BOMProcessor:
         
         self.log(f"Found {len(compress_sheets)} compress sheets to consolidate")
         
-        # Data structure: {(part_num, rev): {metadata, {sheet_type: quantity}}}
         unified_data = defaultdict(lambda: {
             'Material Spec': None,
             'CAD Oem Name': None,
             'Thickness': None,
-            'quantities': defaultdict(float),
             'metadata_sources': set()
         })
         
@@ -396,7 +379,6 @@ class BOMProcessor:
                 material_spec = ws.cell(row_idx, 3).value
                 cad_oem_name = ws.cell(row_idx, 4).value
                 thickness = ws.cell(row_idx, 5).value
-                quantity = ws.cell(row_idx, 6).value
                 
                 if not part_num:
                     continue
@@ -418,9 +400,7 @@ class BOMProcessor:
                     if unified_data[key]['Thickness'] != thickness:
                         self.log(f"WARNING: Part {part_num}/{rev} has different Thickness: '{unified_data[key]['Thickness']}' vs '{thickness}' in sheet {sheet_type}", "WARNING")
                 
-                # Store quantity for this sheet type
-                unified_data[key]['quantities'][sheet_type] = quantity if quantity else 0
-        
+
         # Create new workbook for BOM_Summary
         summary_wb = openpyxl.Workbook()
         summary_ws = summary_wb.active
@@ -506,7 +486,7 @@ class BOMProcessor:
             self.log(f"Found {len(headers)} column headers")
             
             # Required columns validation
-            required_cols = ['BOM Line', 'CAD OEM Part Number', 'CAD OEM Rev', 'Quantity']
+            required_cols = ['BOM Line', 'CAD OEM Part Number', 'CAD OEM Rev']
             missing_cols = [col for col in required_cols if col not in headers]
             if missing_cols:
                 self.log(f"WARNING: Missing required columns: {missing_cols}", "WARNING")
