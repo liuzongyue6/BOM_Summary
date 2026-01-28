@@ -29,6 +29,7 @@ Thumbs.db
 *.log
 processing_log_*.txt
 
-# Output files (keep data/ folder structure but ignore generated files)
-data/*.xlsx
+# Data folder - ignore entire folder except .gitkeep
+data/
+!data/.gitkeep
 
