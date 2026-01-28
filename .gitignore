@@ -1,0 +1,34 @@
+# Virtual Environment
+bom_streamlit/
+venv/
+env/
+*.venv
+
+# Temporary Processing Files
+temp_processing/
+
+# Python Cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+processing_log_*.txt
+
+# Output files (keep data/ folder structure but ignore generated files)
+data/*.xlsx
+
