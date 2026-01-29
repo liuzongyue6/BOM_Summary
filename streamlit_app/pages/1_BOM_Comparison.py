@@ -12,10 +12,10 @@ from pathlib import Path
 from datetime import datetime
 from io import BytesIO
 
-# Add parent directory to path
-sys.path.append(str(Path(__file__).parent.parent))
+# Add parent directory to path to import bom_comparison
+sys.path.append(str(Path(__file__).parent.parent.parent))
 
-from utils.comparison import BOMComparator
+from bom_comparison import BOMComparator
 import config
 
 
@@ -169,23 +169,34 @@ def display_results():
     # Display statistics
     stats = st.session_state.comparison_stats
     
-    col1, col2, col3, col4, col5 = st.columns(5)
+    # Main totals
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric("File 1 Total Parts", stats['total_file1'])
+    with col2:
+        st.metric("File 2 Total Parts", stats['total_file2'])
+    
+    st.divider()
+    
+    # Category breakdown
+    st.subheader("📊 Comparison Categories")
+    col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        st.metric("File 1 Total", stats['total_file1'])
+        st.metric("NoChange", stats['no_change'], 
+                 help="Parts that are completely identical")
     
     with col2:
-        st.metric("File 2 Total", stats['total_file2'])
+        st.metric("Part+Rev Same", stats['part_rev_no_change'],
+                 help="Same Part Number and Rev, but other attributes differ")
     
     with col3:
-        st.metric("Matching Parts", stats['matching'], 
-                 delta=None, delta_color="off")
+        st.metric("Rev Changed", stats['rev_change'],
+                 help="Same Part Number, different Rev")
     
     with col4:
-        st.metric("Unique in File 1", stats['unique_file1'])
-    
-    with col5:
-        st.metric("Unique in File 2", stats['unique_file2'])
+        st.metric("Part Changed", stats['part_change'],
+                 help="Parts found in only one file")
     
     st.divider()
     
@@ -210,10 +221,14 @@ def display_results():
     
     with col_info:
         st.info("""
-        **Report Contents:**
-        - **Sheet 1 (Same):** Matching parts with differences highlighted in yellow
-        - **Sheet 2:** Unique parts from first file
-        - **Sheet 3:** Unique parts from second file
+        **Report Contents (5 Sheets):**
+        - **NoChange:** Parts completely identical
+        - **Part_Rev_NoChange:** Same Part+Rev, attributes differ
+        - **RevChange:** Same Part, different Rev
+        - **PartChange:** Parts in only one file
+        - **Summary:** All categories combined
+        
+        Format: File1 columns | File2 columns (side-by-side)
         """)
     
     # Comparison details
@@ -223,14 +238,16 @@ def display_results():
         - File 1: `{st.session_state.file1_name}`
         - File 2: `{st.session_state.file2_name}`
         
-        **Comparison Key:** CAD OEM Part Number + CAD OEM Rev
+        **Comparison Logic:**
+        1. **NoChange**: Part Number + Rev + all attributes identical
+        2. **Part_Rev_NoChange**: Part Number + Rev same, but Material Spec / CAD Oem Name / Thickness differ
+        3. **RevChange**: Part Number same, Rev different
+        4. **PartChange**: Part Number not found in the other file
         
-        **Columns Compared:**
-        - Material Spec
-        - CAD Oem Name
-        - Thickness
-        
-        **Highlighting:** Yellow cells indicate differences between the two files
+        **Output Format:**
+        - Side-by-side: File1 columns | File2 columns
+        - Yellow highlighting indicates differences
+        - Summary sheet combines all categories with section headers
         """)
     
     # Reset button
