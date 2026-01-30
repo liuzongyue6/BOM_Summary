@@ -1,0 +1,7 @@
+# 基准测试数据目录
+# 
+# 请将以下文件放置到此目录：
+# 1. BOM-COS1000334701-BA.xlsm (输入文件)
+# 2. BOM-COS1000334701-BA_processed_baseline.xlsx (基准输出，首次运行自动生成)
+# 3. BOM-COS1000334701-BA_BOM_Sum_baseline.xlsx (基准汇总，首次运行自动生成)
+# 4. baseline_stats.json (基准统计，首次运行自动生成)

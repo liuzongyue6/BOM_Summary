@@ -33,3 +33,17 @@ processing_log_*.txt
 data/
 !data/.gitkeep
 
+# Test Data - ignore all test data files except .gitkeep
+tests/test_data/baseline/*.xlsm
+tests/test_data/baseline/*.xlsx
+tests/test_data/baseline/*.json
+tests/test_data/baseline/*.txt
+!tests/test_data/baseline/.gitkeep
+tests/test_data/temp_outputs/*
+!tests/test_data/temp_outputs/.gitignore
+
+# Pytest Cache
+.pytest_cache/
+.coverage
+htmlcov/
+

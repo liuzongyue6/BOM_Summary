@@ -4,19 +4,14 @@
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.31.0-red.svg)](https://streamlit.io/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-基于 Streamlit 的 BOM (Bill of Materials) 层级处理 Web 应用程序。支持从 Excel 文件提取 Level 2 项目、创建压缩表和生成 BOM 汇总。
+基于 Streamlit 的 BOM (Bill of Materials) 层级处理和比较 Web 应用程序。支持从 Excel 文件提取 Level 2 项目、创建压缩表、生成 BOM 汇总，以及比较两个 BOM 文件。
 
 ## ✨ 功能特性
 
-- 📁 **Web 文件上传**: 通过浏览器上传 BOM Excel 文件 (.xlsm, .xlsx)
-- 🔄 **实时处理日志**: 在界面上实时显示处理进度和详细日志
-- 📊 **三文件输出**:
-  - 提取工作簿 - 包含所有 Level 2 分支和压缩表
-  - BOM 汇总 - 合并的零件汇总表
-  - 处理日志 - 详细的处理过程记录
-- ✅ **输入验证**: 自动检查必需列，给出警告提示
-- 🧹 **自动清理**: 24小时自动清理临时文件
-- 📈 **统计摘要**: 显示处理结果统计信息
+### BOM 层级处理
+
+### BOM 文件比较
+
 
 ## 🏗️ 项目结构
 
@@ -26,16 +21,28 @@ BOM_Summary/
 ├── streamlit_app/              # Web 应用
 │   ├── bom_app.py              # 主应用程序
 │   ├── config.py               # 配置文件
+│   ├── pages/
+│   │   └── 1_BOM_Comparison.py # BOM 比较页面
 │   └── utils/
 │       ├── __init__.py
 │       └── cleanup.py          # 清理工具
+├── tests/                      # 测试套件 ⭐ 新增
+│   ├── test_bom_processor.py   # 回归测试
+│   ├── test_data/
+│   │   ├── baseline/           # 基准数据（不提交到Git）
+│   │   └── temp_outputs/       # 临时测试输出
+│   └── README.md               # 测试文档
 ├── temp_processing/            # 临时文件（自动清理）
 ├── data/                       # 数据文件
-├── bom_processor.py            # 核心处理逻辑（命令行也可用）
+├── bom_processor.py            # BOM 层级处理核心模块（CLI/Web）
+├── bom_comparison.py           # BOM 文件比较核心模块（CLI/Web）
 ├── requirements.txt            # Python 依赖
+├── pytest.ini                  # Pytest 配置 ⭐ 新增
 ├── .gitignore                  # Git 忽略文件
 ├── run_app.bat                 # Windows 启动脚本
 ├── run_app.sh                  # Linux/Mac 启动脚本
+├── run_tests.ps1               # Windows 测试脚本 ⭐ 新增
+├── run_tests.sh                # Linux/Mac 测试脚本 ⭐ 新增
 ├── DEPLOYMENT.md               # 详细部署文档
 └── README.md                   # 本文件
 ```
@@ -106,29 +113,6 @@ streamlit run streamlit_app/bom_app.py --server.port=8501 --server.address=0.0.0
 - 本地访问: http://localhost:8501
 - 网络访问: http://\<your-ip\>:8501
 
-## 📖 使用指南
-
-### 1. 上传文件
-- 点击 "浏览文件" 或拖放 Excel 文件到上传区
-- 支持 `.xlsm` 和 `.xlsx` 格式
-- 最大文件大小：100MB
-
-### 2. 验证文件
-应用会自动验证文件结构，检查必需的列：
-- BOM Line
-- CAD OEM Part Number
-- CAD OEM Rev
-- Quantity
-
-### 3. 开始处理
-点击 "🚀 开始处理" 按钮，实时日志将显示处理进度
-
-### 4. 下载结果
-处理完成后，可以下载三个文件：
-- **📊 提取工作簿**: 包含所有提取和压缩的工作表
-- **📈 BOM 汇总**: 统一的零件汇总表
-- **📄 处理日志**: 详细的处理日志文件
-
 ## ⚙️ 配置
 
 编辑 `streamlit_app/config.py` 可以自定义设置：
@@ -179,6 +163,8 @@ REQUIRED_COLUMNS = [
 
 ## 🔧 命令行模式
 
+### BOM 层级处理
+
 原有的命令行功能保持不变，可以直接运行：
 
 ```bash
@@ -187,7 +173,62 @@ python bom_processor.py
 
 这将使用硬编码的输入文件路径处理 BOM。
 
+### BOM 文件比较
+
+`bom_comparison.py` 可以作为独立的命令行工具使用，无需启动 Web 应用：
+
+**基本用法:**
+```bash
+python bom_comparison.py --file1 data/BOM1.xlsx --file2 data/BOM2.xlsx
+```
+
+**指定输出文件:**
+```bash
+python bom_comparison.py --file1 BOM1.xlsx --file2 BOM2.xlsx --output comparison_result.xlsx
+```
+
+**同时指定输出和日志文件:**
+```bash
+python bom_comparison.py --file1 BOM1.xlsx --file2 BOM2.xlsx --output result.xlsx --log comparison.log
+```
+
+**查看帮助:**
+```bash
+python bom_comparison.py --help
+```
+
+**输出说明:**
+- 自动生成带时间戳的比较报告（默认：`comparison_result_YYYYMMDD_HHMMSS.xlsx`）
+- 自动生成日志文件（默认：`comparison_log_YYYYMMDD_HHMMSS.txt`）
+- 比较报告包含 **5 个工作表**：
+  1. **NoChange**: 完全相同的零件（Part Number + Rev + 所有属性都一致）
+  2. **Part_Rev_NoChange**: Part Number + Rev 相同，但 Material Spec / CAD Oem Name / Thickness 有差异
+  3. **RevChange**: Part Number 相同，Rev 不同
+  4. **PartChange**: 仅在一个文件中出现的零件
+  5. **Summary**: 所有分类汇总（按类别分段显示）
+
+**比较逻辑:**
+- **分类规则**：
+  - NoChange: Part Number + Rev + 所有属性完全一致
+  - Part_Rev_NoChange: Part Number + Rev 一致，其他属性有差异
+  - RevChange: Part Number 一致，Rev 不同
+  - PartChange: Part Number 在另一文件中找不到
+  
+- **输出格式**：
+  - 并排显示：File1 所有列 | File2 所有列
+  - 差异单元格用黄色背景高亮
+  - Summary 工作表包含所有类别，类别之间用空行分隔
+
+**比较的列:**
+- `CAD OEM Part Number`
+- `CAD OEM Rev`
+- `Material Spec`
+- `CAD Oem Name`
+- `Thickness`
+
 ## 📊 处理说明
+
+### BOM 层级处理
 
 应用执行以下步骤：
 
@@ -197,22 +238,24 @@ python bom_processor.py
 4. **创建压缩表**: 对每个分支进行去重和数量汇总
 5. **生成汇总**: 创建包含所有零件的统一 BOM 汇总表
 
-### 输出说明
-
 **提取工作簿包含:**
 - 每个 Level 2 项目的原始工作表（例如 `BA`, `BD`, `CA` 等）
 - 对应的压缩工作表（例如 `BA_Compress`, `BD_Compress` 等）
 
-**BOM 汇总包含:**
-- 单个 `BOM_Summary` 工作表
-- 所有唯一零件及其在各分支中的数量
+### BOM 文件比较
 
-## 🛡️ 安全建议
+应用执行以下步骤：
 
-- 仅在受信任的网络环境中运行
-- 考虑添加身份验证（使用 streamlit-authenticator）
-- 使用 HTTPS（通过 Nginx 反向代理）
-- 配置防火墙 IP 白名单
+1. **加载两个文件**: 读取并验证必需的列
+2. **智能分类**: 根据 Part Number 和 Rev 进行四类分类
+3. **生成报告**: 创建 5 个工作表的详细比较报告
+4. **高亮差异**: 自动标记所有差异单元格（黄色）
+
+**比较报告特点:**
+- 并排对比格式，一目了然
+- 智能分类，快速定位问题
+- Summary 汇总表，完整视图
+- 详细日志，可追溯性强
 
 ## 📝 常见问题
 
@@ -234,39 +277,92 @@ A: 可能原因：
 
 A: 编辑 `streamlit_app/config.py`，修改 `MAX_UPLOAD_SIZE_MB` 的值
 
-**Q: 处理过程中出错怎么办？**
+**Q: BOM 比较的分类逻辑是什么？**
 
-A: 
-1. 查看实时日志中的错误信息
-2. 下载错误日志进行分析
-3. 确认 Excel 文件包含所有必需列
-4. 检查文件是否损坏
+A: 比较分为 4 个类别：
+1. **NoChange**: 所有内容完全相同
+2. **Part_Rev_NoChange**: Part+Rev 相同，但 Material Spec / CAD Oem Name / Thickness 有变化
+3. **RevChange**: Part Number 相同，Rev 不同（可能是版本更新）
+4. **PartChange**: Part Number 完全不匹配（新增或删除的零件）
 
-## 🔄 更新日志
+## 🧪 测试
 
-### v1.0 (2026-01-27)
-- ✨ 初始 Streamlit Web 版本发布
-- 🔄 支持文件上传和实时处理
-- 📊 三文件下载功能
-- 🧹 自动临时文件清理
-- ✅ 输入文件验证
-- 📝 实时日志显示
+本项目包含完整的回归测试框架，确保代码修改不会破坏现有功能。
 
-## 👥 贡献
+### 快速运行测试
 
-欢迎提交 Issue 和 Pull Request！
+**Windows:**
+```powershell
+.\run_tests.ps1
+```
+
+**Linux/Mac:**
+```bash
+./run_tests.sh
+```
+
+### 手动运行测试
+
+```bash
+# 激活虚拟环境
+.\bom_streamlit\Scripts\Activate.ps1  # Windows
+# 或
+source bom_streamlit/bin/activate     # Linux/Mac
+
+# 运行所有测试
+pytest tests/test_bom_processor.py -v
+
+# 运行特定测试
+pytest tests/test_bom_processor.py::TestBOMProcessor::test_output_file_cell_by_cell_comparison -v -s
+```
+
+### 测试特性
+
+- ✅ **逐单元格比对**: 验证输出文件的每个单元格数据
+- ✅ **浮点数容差**: 自动处理浮点精度差异（默认 1e-6）
+- ✅ **统计验证**: 确保 Level 1/2 数量、工作表结构保持一致
+- ✅ **性能测试**: 监控处理时间，防止性能退化
+- ✅ **详细报告**: 自动生成差异报告（JSON 格式）
+
+### 首次设置测试
+
+1. 复制输入文件到基准目录：
+   ```powershell
+   Copy-Item "data\BOM-COS1000334701-BA.xlsm" "tests\test_data\baseline\"
+   ```
+
+2. 运行测试生成基准文件（首次会自动生成）：
+   ```bash
+   pytest tests/test_bom_processor.py -v
+   ```
+
+3. 查看详细测试文档：
+   ```
+   tests/README.md
+   ```
+
+### 修改代码后的工作流
+
+1. **修改前运行测试** - 确保起点正确
+2. **修改代码** - 实现新功能或修复bug
+3. **修改后运行测试** - 验证没有引入回归问题
+4. **如果测试失败** - 查看差异报告，决定是修复代码还是更新基准
+
+📖 **完整测试文档**: 参见 `tests/README.md`
 
 ## 📄 许可证
 
 MIT License
 
-## 🙏 致谢
-
-- [Streamlit](https://streamlit.io/) - Web 应用框架
-- [OpenPyXL](https://openpyxl.readthedocs.io/) - Excel 文件处理
-
 ---
 
 **作者**: Zongyue Liu  
 **创建日期**: 2026-01-27  
-**版本**: 1.0
+**最后更新**: 2026-01-29  
+**版本**: 1.1
+
+**更新日志 (v1.1)**:
+- ✨ 新增完整的回归测试框架
+- ✨ 支持逐单元格比对和浮点数容差验证
+- ✨ 添加测试运行脚本 (`run_tests.ps1` / `run_tests.sh`)
+- 📚 更新文档，增加测试部分说明
