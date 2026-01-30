@@ -1,6 +1,6 @@
 """
 BOM Processor - Extract and compress hierarchical BOM data from Excel files
-Author: GitHub Copilot
+Author: Zongyue Liu
 Date: 2026-01-24
 
 This script processes hierarchical BOM (Bill of Materials) Excel files by:
@@ -121,7 +121,7 @@ class BOMProcessor:
         self.log(f"Found {len(headers)} column headers")
         
         # Required columns
-        required_cols = ['BOM Line', 'CAD OEM Part Number', 'CAD OEM Rev', 'Quantity']
+        required_cols = ['BOM Line', 'Weight', 'Area', 'CAD OEM Part Number', 'CAD OEM Rev', 'Quantity']
         missing_cols = [col for col in required_cols if col not in headers]
         if missing_cols:
             self.log(f"WARNING: Missing required columns: {missing_cols}", "WARNING")
@@ -276,6 +276,8 @@ class BOMProcessor:
             'Material Spec',
             'CAD Oem Name',
             'Thickness',
+            'Weight',        # 新增
+            'Area',          # 新增
             'Quantity'
         ]
         
@@ -294,6 +296,8 @@ class BOMProcessor:
                 'Material Spec': None,
                 'CAD Oem Name': None,
                 'Thickness': None,
+                'Weight': None,      # 🔧 FIX: 添加初始化
+                'Area': None,        # 🔧 FIX: 添加初始化
                 'Quantity': 0
             })
             
@@ -338,7 +342,9 @@ class BOMProcessor:
                 ws.cell(row_idx, 3, data['Material Spec'])
                 ws.cell(row_idx, 4, data['CAD Oem Name'])
                 ws.cell(row_idx, 5, data['Thickness'])
-                ws.cell(row_idx, 6, data['Quantity'])
+                ws.cell(row_idx, 6, data['Weight'])       # 新增
+                ws.cell(row_idx, 7, data['Area'])         # 新增
+                ws.cell(row_idx, 8, data['Quantity'])     # 位置改为第8列
                 row_idx += 1
             
             deduplicated_count = len(grouped_data)
@@ -381,6 +387,8 @@ class BOMProcessor:
             'Material Spec': None,
             'CAD Oem Name': None,
             'Thickness': None,
+            'Weight': None,            # 新增
+            'Area': None,              # 新增
             'quantities': defaultdict(float),
             'metadata_sources': set()
         })
@@ -396,7 +404,9 @@ class BOMProcessor:
                 material_spec = ws.cell(row_idx, 3).value
                 cad_oem_name = ws.cell(row_idx, 4).value
                 thickness = ws.cell(row_idx, 5).value
-                quantity = ws.cell(row_idx, 6).value
+                weight = ws.cell(row_idx, 6).value      # 新增
+                area = ws.cell(row_idx, 7).value        # 新增
+                quantity = ws.cell(row_idx, 8).value    # 列位置改变
                 
                 if not part_num:
                     continue
@@ -408,6 +418,8 @@ class BOMProcessor:
                     unified_data[key]['Material Spec'] = material_spec
                     unified_data[key]['CAD Oem Name'] = cad_oem_name
                     unified_data[key]['Thickness'] = thickness
+                    unified_data[key]['Weight'] = weight          # 新增
+                    unified_data[key]['Area'] = area              # 新增
                     unified_data[key]['metadata_sources'].add(sheet_type)
                 else:
                     # Check for metadata conflicts
@@ -431,7 +443,8 @@ class BOMProcessor:
         sheet_types = list(compress_sheets.keys())
         
         # Write headers
-        headers = ['CAD OEM Part Number', 'CAD OEM Rev', 'Material Spec', 'CAD Oem Name', 'Thickness']
+        headers = ['CAD OEM Part Number', 'CAD OEM Rev', 'Material Spec', 'CAD Oem Name', 
+               'Thickness', 'Weight', 'Area']  # 新增
         headers.extend(sheet_types)
         
         for col_idx, header in enumerate(headers, start=1):
@@ -445,6 +458,8 @@ class BOMProcessor:
             summary_ws.cell(row_idx, 3, data['Material Spec'])
             summary_ws.cell(row_idx, 4, data['CAD Oem Name'])
             summary_ws.cell(row_idx, 5, data['Thickness'])
+            summary_ws.cell(row_idx, 6, data['Weight'])       # 新增
+            summary_ws.cell(row_idx, 7, data['Area'])         # 新增
             
             # Write quantities for each sheet type
             for col_idx, sheet_type in enumerate(sheet_types, start=6):
@@ -506,7 +521,7 @@ class BOMProcessor:
             self.log(f"Found {len(headers)} column headers")
             
             # Required columns validation
-            required_cols = ['BOM Line', 'CAD OEM Part Number', 'CAD OEM Rev', 'Quantity']
+            required_cols = ['BOM Line', 'Weight', 'Area', 'CAD OEM Part Number', 'CAD OEM Rev', 'Quantity']
             missing_cols = [col for col in required_cols if col not in headers]
             if missing_cols:
                 self.log(f"WARNING: Missing required columns: {missing_cols}", "WARNING")
@@ -690,7 +705,7 @@ def main():
     current_date = datetime.datetime.now().strftime("%Y%m%d")
     
     # File paths with date stamp
-    input_file = r"c:\Users\zongyue.liu\Desktop\AdvSimulation\BOM_Summary\data\BOM-COS1000334701-BA.xlsm"
+    input_file = r"c:\Users\zongyue.liu\Desktop\AdvSimulation\BOM_Summary\data\COS1000334701_BA-01302026_rev15.xlsm"
     file_name_wo_ext = os.path.splitext(os.path.basename(input_file))[0]
     current_time_str = datetime.datetime.now().strftime("%Y%m%d_%H%M")
     output_file = rf"c:\Users\zongyue.liu\Desktop\AdvSimulation\BOM_Summary\data\{file_name_wo_ext}_processed_{current_time_str}.xlsx"
