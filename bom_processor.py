@@ -2,32 +2,45 @@
 BOM Processor - Extract and compress hierarchical BOM data from Excel files
 Author: Zongyue Liu
 Date: 2026-01-24
-
-This script processes hierarchical BOM (Bill of Materials) Excel files by:
-1. Extracting Level 2 items and their children into separate sheets
-2. Creating compressed versions with deduplicated parts and aggregated quantities
 """
 
 import openpyxl
 from openpyxl import load_workbook
-from openpyxl.utils import get_column_letter
 from collections import defaultdict
 import datetime
 import os
 from typing import Dict, List, Tuple, Any
 
+# 导入配置
+from bom_config import BOMConfig
+
 
 class BOMProcessor:
     """Process hierarchical BOM Excel files"""
     
-    def __init__(self, input_file: str = None, output_file: str = None, summary_file: str = None, log_file: str = None, log_callback=None):
+    # 类级别配置：从BOMConfig导入
+    CONFIG = BOMConfig
+    
+    def __init__(self, input_file: str = None, output_file: str = None, 
+                 summary_file: str = None, log_file: str = None, 
+                 log_callback=None, config=None):
+        """
+        初始化BOM处理器
+        
+        Args:
+            config: 可选的配置对象，用于覆盖默认配置
+        """
         self.input_file = input_file
         self.output_file = output_file
         self.summary_file = summary_file
         self.log_file = log_file
-        self.log_callback = log_callback  # Callback function for real-time log updates
+        self.log_callback = log_callback
         self.log_messages = []
         self.start_time = datetime.datetime.now()
+        
+        # 允许自定义配置
+        if config:
+            self.CONFIG = config
         
         # Statistics
         self.stats = {
@@ -44,11 +57,9 @@ class BOMProcessor:
         log_entry = f"[{timestamp}] [{level}] {message}"
         self.log_messages.append(log_entry)
         
-        # Call callback if provided (for Streamlit real-time updates)
         if self.log_callback:
             self.log_callback(log_entry)
         else:
-            # Default: print to console (for CLI usage)
             print(log_entry)
     
     def write_log_file(self):
@@ -94,7 +105,7 @@ class BOMProcessor:
             f.write("\n" + "="*80 + "\n")
             f.write("PROCESSING COMPLETED SUCCESSFULLY\n")
             f.write("="*80 + "\n")
-    
+            
     def load_workbook_data(self) -> Tuple[Any, Any, Dict[str, int], List[Dict]]:
         """Load workbook and extract hierarchical data with outline levels"""
         self.log(f"Loading workbook: {self.input_file}")
@@ -106,12 +117,11 @@ class BOMProcessor:
             self.log(f"Error loading workbook: {e}", "ERROR")
             raise
         
-        # Get the main sheet (first sheet)
         main_sheet = wb.worksheets[0]
         sheet_name = main_sheet.title
         self.log(f"Processing main sheet: '{sheet_name}' ({main_sheet.max_row} rows, {main_sheet.max_column} cols)")
         
-        # Extract headers from row 1
+        # Extract headers
         headers = {}
         for col_idx in range(1, main_sheet.max_column + 1):
             cell_value = main_sheet.cell(1, col_idx).value
@@ -120,13 +130,12 @@ class BOMProcessor:
         
         self.log(f"Found {len(headers)} column headers")
         
-        # Required columns
-        required_cols = ['BOM Line', 'Weight', 'Area', 'CAD OEM Part Number', 'CAD OEM Rev', 'Quantity']
-        missing_cols = [col for col in required_cols if col not in headers]
-        if missing_cols:
+        # 🔧 使用配置验证必需列
+        is_valid, missing_cols = self.CONFIG.validate_columns(headers.keys())
+        if not is_valid:
             self.log(f"WARNING: Missing required columns: {missing_cols}", "WARNING")
         
-        # Extract all data rows with outline levels
+        # Extract data rows
         data_rows = []
         for row_idx in range(2, main_sheet.max_row + 1):
             row_dim = main_sheet.row_dimensions[row_idx]
@@ -270,16 +279,8 @@ class BOMProcessor:
         """Create compressed sheets with deduplication and quantity aggregation"""
         self.log("Creating compressed sheets...")
         
-        compress_columns = [
-            'CAD OEM Part Number',
-            'CAD OEM Rev',
-            'Material Spec',
-            'CAD Oem Name',
-            'Thickness',
-            'Weight',        # 新增
-            'Area',          # 新增
-            'Quantity'
-        ]
+        # 🔧 使用配置获取输出列
+        compress_columns = self.CONFIG.COMPRESS_OUTPUT_COLUMNS
         
         for sheet_name, rows in branches.items():
             compress_sheet_name = f"{sheet_name}_Compress"
@@ -291,60 +292,52 @@ class BOMProcessor:
             for col_idx, col_name in enumerate(compress_columns, start=1):
                 ws.cell(1, col_idx, col_name)
             
-            # Group by (CAD OEM Part Number, CAD OEM Rev)
-            grouped_data = defaultdict(lambda: {
-                'Material Spec': None,
-                'CAD Oem Name': None,
-                'Thickness': None,
-                'Weight': None,      # 🔧 FIX: 添加初始化
-                'Area': None,        # 🔧 FIX: 添加初始化
-                'Quantity': 0
-            })
+            # 🔧 使用配置初始化分组数据
+            grouped_data = defaultdict(lambda: self.CONFIG.get_metadata_dict())
             
             original_count = 0
             for row_data in rows:
-                part_num = row_data.get('CAD OEM Part Number')
-                rev = row_data.get('CAD OEM Rev')
+                # 🔧 使用配置获取分组键
+                grouping_keys = tuple(row_data.get(col) for col in self.CONFIG.GROUPING_KEY_COLUMNS)
                 
                 # Skip rows without part number
-                if not part_num:
+                if not grouping_keys[0]:
                     continue
                 
                 original_count += 1
                 
-                key = (part_num, rev)
-                
-                # Get quantity and normalize (empty/0 -> 1)
-                qty = row_data.get('Quantity')
+                # Get and normalize quantity
+                qty = row_data.get(self.CONFIG.ACCUMULATION_COLUMN)
                 if qty is None or qty == '' or qty == 0 or qty == '0' or qty == 0.0:
-                    qty = 1
+                    qty = self.CONFIG.DEFAULT_QUANTITY
                 else:
                     try:
                         qty = float(qty)
                     except (ValueError, TypeError):
-                        self.log(f"WARNING: Invalid quantity '{qty}' in {sheet_name}, treating as 1", "WARNING")
-                        qty = 1
+                        self.log(f"WARNING: Invalid quantity '{qty}' in {sheet_name}, treating as {self.CONFIG.DEFAULT_QUANTITY}", "WARNING")
+                        qty = self.CONFIG.DEFAULT_QUANTITY
                 
-                # First occurrence: store all fields
-                if grouped_data[key]['Material Spec'] is None:
-                    grouped_data[key]['Material Spec'] = row_data.get('Material Spec')
-                    grouped_data[key]['CAD Oem Name'] = row_data.get('CAD Oem Name')
-                    grouped_data[key]['Thickness'] = row_data.get('Thickness')
+                # 🔧 使用配置存储元数据
+                if grouped_data[grouping_keys][self.CONFIG.METADATA_COLUMNS[0]] is None:
+                    for col in self.CONFIG.METADATA_COLUMNS:
+                        grouped_data[grouping_keys][col] = row_data.get(col)
                 
                 # Accumulate quantity
-                grouped_data[key]['Quantity'] += qty
+                grouped_data[grouping_keys][self.CONFIG.ACCUMULATION_COLUMN] += qty
             
-            # Write deduplicated data
+            # 🔧 使用配置写入数据
+            col_indices = self.CONFIG.get_compress_column_indices()
             row_idx = 2
-            for (part_num, rev), data in sorted(grouped_data.items()):
-                ws.cell(row_idx, 1, part_num)
-                ws.cell(row_idx, 2, rev)
-                ws.cell(row_idx, 3, data['Material Spec'])
-                ws.cell(row_idx, 4, data['CAD Oem Name'])
-                ws.cell(row_idx, 5, data['Thickness'])
-                ws.cell(row_idx, 6, data['Weight'])       # 新增
-                ws.cell(row_idx, 7, data['Area'])         # 新增
-                ws.cell(row_idx, 8, data['Quantity'])     # 位置改为第8列
+            for keys, data in sorted(grouped_data.items()):
+                for col_name in compress_columns:
+                    col_idx = col_indices[col_name]
+                    if col_name in self.CONFIG.GROUPING_KEY_COLUMNS:
+                        # 写入分组键
+                        key_idx = self.CONFIG.GROUPING_KEY_COLUMNS.index(col_name)
+                        ws.cell(row_idx, col_idx, keys[key_idx])
+                    else:
+                        # 写入数据
+                        ws.cell(row_idx, col_idx, data.get(col_name))
                 row_idx += 1
             
             deduplicated_count = len(grouped_data)
@@ -362,14 +355,11 @@ class BOMProcessor:
         
         self.log(f"Created {len(branches)} compressed sheets")
     
-
     def create_unified_summary(self, output_wb: Any) -> openpyxl.Workbook:
-        """Create unified BOM summary sheet consolidating all compress sheets.
-        Returns a new workbook containing only the BOM_Summary sheet.
-        """
+        """Create unified BOM summary sheet consolidating all compress sheets."""
         self.log("Creating unified BOM summary...")
         
-        # Collect all compress sheets
+        # Collect compress sheets
         compress_sheets = {}
         for sheet_name in output_wb.sheetnames:
             if sheet_name.endswith('_Compress'):
@@ -382,89 +372,74 @@ class BOMProcessor:
         
         self.log(f"Found {len(compress_sheets)} compress sheets to consolidate")
         
-        # Data structure: {(part_num, rev): {metadata, {sheet_type: quantity}}}
+        # 🔧 使用配置初始化统一数据
         unified_data = defaultdict(lambda: {
-            'Material Spec': None,
-            'CAD Oem Name': None,
-            'Thickness': None,
-            'Weight': None,            # 新增
-            'Area': None,              # 新增
+            **{col: None for col in self.CONFIG.METADATA_COLUMNS},
             'quantities': defaultdict(float),
             'metadata_sources': set()
         })
         
-        # Collect data from all compress sheets
+        # 🔧 使用配置获取列索引
+        col_indices = self.CONFIG.get_compress_column_indices()
+        
+        # Collect data from compress sheets
         for sheet_type, ws in compress_sheets.items():
             self.log(f"  Processing compress sheet: {sheet_type}")
             
-            # Read data from compress sheet (skip header row)
             for row_idx in range(2, ws.max_row + 1):
-                part_num = ws.cell(row_idx, 1).value
-                rev = ws.cell(row_idx, 2).value
-                material_spec = ws.cell(row_idx, 3).value
-                cad_oem_name = ws.cell(row_idx, 4).value
-                thickness = ws.cell(row_idx, 5).value
-                weight = ws.cell(row_idx, 6).value      # 新增
-                area = ws.cell(row_idx, 7).value        # 新增
-                quantity = ws.cell(row_idx, 8).value    # 列位置改变
+                # 🔧 动态读取分组键
+                grouping_keys = tuple(
+                    ws.cell(row_idx, col_indices[col]).value 
+                    for col in self.CONFIG.GROUPING_KEY_COLUMNS
+                )
                 
-                if not part_num:
+                if not grouping_keys[0]:
                     continue
                 
-                key = (part_num, rev)
+                # 🔧 动态读取元数据
+                if unified_data[grouping_keys][self.CONFIG.METADATA_COLUMNS[0]] is None:
+                    for col in self.CONFIG.METADATA_COLUMNS:
+                        unified_data[grouping_keys][col] = ws.cell(row_idx, col_indices[col]).value
+                    unified_data[grouping_keys]['metadata_sources'].add(sheet_type)
                 
-                # Store or verify metadata
-                if unified_data[key]['Material Spec'] is None:
-                    unified_data[key]['Material Spec'] = material_spec
-                    unified_data[key]['CAD Oem Name'] = cad_oem_name
-                    unified_data[key]['Thickness'] = thickness
-                    unified_data[key]['Weight'] = weight          # 新增
-                    unified_data[key]['Area'] = area              # 新增
-                    unified_data[key]['metadata_sources'].add(sheet_type)
-                else:
-                    # Check for metadata conflicts
-                    if unified_data[key]['Material Spec'] != material_spec:
-                        self.log(f"WARNING: Part {part_num}/{rev} has different Material Spec: '{unified_data[key]['Material Spec']}' vs '{material_spec}' in sheet {sheet_type}", "WARNING")
-                    if unified_data[key]['CAD Oem Name'] != cad_oem_name:
-                        self.log(f"WARNING: Part {part_num}/{rev} has different CAD Oem Name: '{unified_data[key]['CAD Oem Name']}' vs '{cad_oem_name}' in sheet {sheet_type}", "WARNING")
-                    if unified_data[key]['Thickness'] != thickness:
-                        self.log(f"WARNING: Part {part_num}/{rev} has different Thickness: '{unified_data[key]['Thickness']}' vs '{thickness}' in sheet {sheet_type}", "WARNING")
-                
-                # Store quantity for this sheet type
-                unified_data[key]['quantities'][sheet_type] = quantity if quantity else 0
+                # 读取数量
+                quantity = ws.cell(row_idx, col_indices[self.CONFIG.ACCUMULATION_COLUMN]).value
+                unified_data[grouping_keys]['quantities'][sheet_type] = quantity if quantity else 0
         
-        # Create new workbook for BOM_Summary
+        # Create summary workbook
         summary_wb = openpyxl.Workbook()
         summary_ws = summary_wb.active
         summary_ws.title = 'BOM_Summary'
-        self.log("Creating BOM_Summary sheet")
         
-        # Get sorted sheet types (maintain original order from workbook)
         sheet_types = list(compress_sheets.keys())
         
-        # Write headers
-        headers = ['CAD OEM Part Number', 'CAD OEM Rev', 'Material Spec', 'CAD Oem Name', 
-               'Thickness', 'Weight', 'Area']  # 新增
+        # 🔧 使用配置定义表头
+        headers = list(self.CONFIG.SUMMARY_FIXED_COLUMNS)
         headers.extend(sheet_types)
         
         for col_idx, header in enumerate(headers, start=1):
             summary_ws.cell(1, col_idx, header)
         
-        # Write data rows
+        # Write data
         row_idx = 2
-        for (part_num, rev), data in sorted(unified_data.items()):
-            summary_ws.cell(row_idx, 1, part_num)
-            summary_ws.cell(row_idx, 2, rev)
-            summary_ws.cell(row_idx, 3, data['Material Spec'])
-            summary_ws.cell(row_idx, 4, data['CAD Oem Name'])
-            summary_ws.cell(row_idx, 5, data['Thickness'])
-            summary_ws.cell(row_idx, 6, data['Weight'])       # 新增
-            summary_ws.cell(row_idx, 7, data['Area'])         # 新增
+        for keys, data in sorted(unified_data.items()):
+            col_idx = 1
             
-            # Write quantities for each sheet type
-            for col_idx, sheet_type in enumerate(sheet_types, start=6):
+            # 写入分组键
+            for key in keys:
+                summary_ws.cell(row_idx, col_idx, key)
+                col_idx += 1
+            
+            # 🔧 写入元数据
+            for col_name in self.CONFIG.METADATA_COLUMNS:
+                summary_ws.cell(row_idx, col_idx, data[col_name])
+                col_idx += 1
+            
+            # 写入各sheet的数量
+            for sheet_type in sheet_types:
                 qty = data['quantities'].get(sheet_type, 0)
                 summary_ws.cell(row_idx, col_idx, qty)
+                col_idx += 1
             
             row_idx += 1
         
